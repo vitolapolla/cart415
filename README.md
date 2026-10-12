@@ -49,15 +49,15 @@ Until then, on an iPhone you can open the website version in Safari and use **Sh
 
 | | |
 |---|---|
-| **Music** | Full-length tracks from [Audius](https://audius.co), plus 30-second previews of the mainstream catalog (Apple Music), plus ~50,000 live radio stations |
-| **Discover** | Home feed (trending, underground, popular playlists, radio), 20 genre mixes, charts |
-| **Search** | Songs, catalog previews, artists, playlists and radio stations at once |
-| **Library** | Liked Songs, your own playlists (create, rename, delete, add and remove songs), save public playlists, recently played. Stored on the server so it follows you between devices; export and import as JSON |
-| **Player** | Queue with "Play next" and "Add to queue", shuffle, repeat all or one, autoplay of similar songs when the queue ends, sleep timer, 5-band equalizer with presets |
-| **Lyrics** | Synced, karaoke-style lyrics (click a line to jump to it) from [LRCLIB](https://lrclib.net) |
-| **Sonos** | Speaker discovery, play / pause / seek / skip / group volume, automatic queue advance, track info and artwork on the Sonos app, group and ungroup rooms, radio on Sonos |
-| **Android app** | Phone-first design, full-screen player with swipe gestures, background playback with notification and lock-screen controls, Bluetooth and headset buttons, Android Auto, voice search, system equalizer |
-| **Everywhere** | Works as a website on any device, keyboard shortcuts on desktop |
+| **Mainstream music** | Live **radio** in each format (Top 40, country, hip-hop, classic hits, Christian, kids…) with the song that's on the air right now. Apple Music **charts** (Top 50, Pop, Country, Hip-Hop, R&B, Rock, Latin, Kids…) as 30-second previews, each with a link to the full song |
+| **Full songs** | Full-length tracks from independent artists on [Audius](https://audius.co), with 20 genre mixes and popular playlists |
+| **Kids corner** | Official YouTube channels (Ms Rachel, Super Simple Songs, Cocomelon, Pinkfong, Little Baby Bum, Bluey, Sesame Street, Blippi) in a video player; Ms Rachel songs; the kids chart; kids radio; bedtime stations |
+| **Search** | Songs, chart hits, artists, playlists and radio at once. Add a free YouTube API key in Settings to search YouTube music videos too |
+| **Library** | Liked Songs, your own playlists, saved playlists, recently played; export and import |
+| **Player** | Queue, Play next, shuffle, repeat, autoplay, synced lyrics, sleep timer, equalizer |
+| **Sonos** | Speaker discovery, play, pause, seek, skip, group volume, grouping rooms, radio on Sonos |
+| **Design** | Material 3 ("Material You"): the app takes its colors from the album art, light and dark themes, a wavy progress bar, a play button that changes shape, bottom sheets, a navigation bar on phones and a navigation rail on desktop |
+| **Android app** | Background playback with notification and lock-screen controls, Bluetooth buttons, Android Auto (with Kids, Charts and On the radio folders), voice search, system equalizer |
 
 ### Keyboard shortcuts
 
@@ -78,20 +78,21 @@ Encore uses the speakers' own local control API (UPnP/SOAP on port 1400), the sa
 
 > Sonos also supports **AirPlay 2**, so on an iPhone or Mac you can send *any* audio (including this app in Safari) to newer Sonos speakers through the AirPlay menu.
 
-## About Spotify
+## About Spotify, YouTube and "mainstream" music
 
-Encore can't stream songs from Spotify. Spotify's terms forbid it, its audio is DRM-protected, and its Web API stopped serving even 30-second previews to new apps in late 2024. The only official way to play Spotify audio is inside Spotify's own apps or SDKs, and those require a Premium account.
-
-So Encore uses sources that legally allow free streaming:
+Encore doesn't copy audio from Spotify, YouTube or other paid services. Their terms forbid it, Spotify's audio is DRM-protected, and apps that rip YouTube audio get taken down. Instead it uses every legal free source of mainstream music:
 
 | Source | What you get | Key needed? |
 |---|---|---|
-| Audius | Full tracks, uploaded by artists | No |
-| Apple iTunes Search | 30-second previews of major-label music, with a link to the full song | No |
-| radio-browser.info | Live radio stations | No |
+| Live radio ([radio-browser.info](https://www.radio-browser.info)) | Full-length mainstream music, as broadcast, plus "now playing" | No |
+| Apple Music charts (iTunes RSS) | What's popular right now, by genre, as 30-second previews | No |
+| YouTube (official channels) | Full videos in YouTube's own embedded player, as YouTube's terms require | No for channels; a free API key for search |
+| Audius | Full tracks, uploaded by independent artists | No |
 | LRCLIB | Lyrics | No |
 
-Ideas for more sources: [Jamendo](https://developer.jamendo.com) (600k+ Creative Commons tracks, free API key), the Internet Archive's live concert collection, your own MP3/FLAC folder, or Spotify **playlist import** (copy playlist names and track lists over and match them to the sources above; this needs a free Spotify developer app).
+YouTube videos can't be sent to Sonos or played with the screen off. That's YouTube's rule for embedded players. If a video won't play inside the app, the **YouTube** button opens it in the YouTube app.
+
+To get every major-label song in full, on demand, you'd need a licensed service. Sonos plays Spotify, Apple Music and Amazon Music natively from the Sonos app.
 
 ## Configuration
 

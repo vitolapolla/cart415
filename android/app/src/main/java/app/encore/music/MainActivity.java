@@ -9,5 +9,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(EncorePlayerPlugin.class);
         registerPlugin(SonosDiscoveryPlugin.class);
         super.onCreate(savedInstanceState);
+        // Let the embedded YouTube player start when a video is tapped.
+        getBridge().getWebView().getSettings().setMediaPlaybackRequiresUserGesture(false);
     }
 }

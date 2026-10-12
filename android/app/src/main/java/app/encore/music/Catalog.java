@@ -25,6 +25,16 @@ final class Catalog {
     private static final String AUDIUS = "https://api.audius.co/v1";
     private static final String APP = "encore";
     private static final String[] RADIO_MIRRORS = {"de1", "fi1", "de2", "nl1"};
+    // {radio-browser tag, label}
+    private static final String[][] ON_AIR = {
+        {"top 40", "Top 40 & hits"}, {"country", "Country"}, {"hip-hop", "Hip-hop & R&B"}, {"classic hits", "Classic hits"},
+        {"christian", "Christian"}, {"kids", "Kids"}, {"chillout", "Chill"}, {"news", "News & talk"},
+    };
+    // {iTunes genre id ("" = all), label}
+    private static final String[][] CHARTS = {
+        {"", "Top 50"}, {"14", "Pop"}, {"6", "Country"}, {"18", "Hip-Hop"}, {"15", "R&B"}, {"21", "Rock"},
+        {"20", "Alternative"}, {"17", "Dance"}, {"12", "Latin"}, {"22", "Christian"}, {"4", "Kids"},
+    };
     static final String[] GENRES = {
         "Electronic", "Hip-Hop/Rap", "Pop", "R&B/Soul", "Rock", "Alternative", "House", "Techno", "Lo-Fi",
         "Ambient", "Jazz", "Dubstep", "Drum & Bass", "Latin", "Classical", "Country", "Reggae", "Metal", "Funk", "Soundtrack",
@@ -60,11 +70,27 @@ final class Catalog {
         List<MediaItem> out = new ArrayList<>();
         if (ROOT.equals(parentId)) {
             out.add(Tracks.folder("liked", "Liked Songs", null));
+            out.add(Tracks.folder("onair", "On the radio", "Live hits, country and more"));
+            out.add(Tracks.folder("charts", "Charts", "Top songs (previews)"));
+            out.add(Tracks.folder("kids", "Kids", "Songs and radio for little ones"));
             out.add(Tracks.folder("playlists", "Your playlists", null));
             out.add(Tracks.folder("recent", "Recently played", null));
-            out.add(Tracks.folder("trending", "Trending", null));
+            out.add(Tracks.folder("trending", "Fresh on Audius", null));
             out.add(Tracks.folder("genres", "Genres", null));
-            out.add(Tracks.folder("radio", "Radio", null));
+            return out;
+        }
+        if ("onair".equals(parentId)) {
+            for (String[] f : ON_AIR) out.add(Tracks.folder("onair:" + f[0], f[1], null));
+            return out;
+        }
+        if ("charts".equals(parentId)) {
+            for (String[] c : CHARTS) out.add(Tracks.folder("chart:" + c[0], c[1], null));
+            return out;
+        }
+        if ("kids".equals(parentId)) {
+            out.add(Tracks.folder("onair:kids", "Kids radio", null));
+            out.add(Tracks.folder("chart:4", "Top kids songs", "Previews"));
+            out.add(Tracks.folder("onair:lullaby", "Lullabies", null));
             return out;
         }
         if ("genres".equals(parentId)) {
@@ -87,6 +113,8 @@ final class Catalog {
         else if ("trending".equals(parentId)) tracks = audiusTracks(get(AUDIUS + "/tracks/trending?limit=40&app_name=" + APP));
         else if (parentId.startsWith("genre:")) tracks = audiusTracks(get(AUDIUS + "/tracks/trending?limit=40&app_name=" + APP + "&genre=" + enc(parentId.substring(6))));
         else if ("radio".equals(parentId)) tracks = stations(radio("/stations/topclick/80"));
+        else if (parentId.startsWith("onair:")) tracks = stations(radio("/stations/search?limit=60&order=clickcount&reverse=true&hidebroken=true&countrycode=US&tag=" + enc(parentId.substring(6))));
+        else if (parentId.startsWith("chart:")) tracks = chart(parentId.substring(6));
         else tracks = null;
         return remember(tracks);
     }
@@ -152,6 +180,38 @@ final class Catalog {
             o.put("genre", Tracks.str(t, "genre"));
             o.put("stream", AUDIUS + "/tracks/" + t.getString("id") + "/stream?app_name=" + APP);
             o.put("kind", "full");
+            out.put(o);
+        }
+        return out;
+    }
+
+    /** Apple's iTunes top-songs chart, as 30-second previews. */
+    private static JSONArray chart(String genre) throws Exception {
+        String url = "https://itunes.apple.com/us/rss/topsongs/limit=50" + (genre.isEmpty() ? "" : "/genre=" + genre) + "/json";
+        JSONObject feed = new JSONObject(get(url)).getJSONObject("feed");
+        JSONArray entries = feed.optJSONArray("entry");
+        JSONArray out = new JSONArray();
+        for (int i = 0; entries != null && i < entries.length(); i++) {
+            JSONObject e = entries.getJSONObject(i);
+            JSONArray links = e.optJSONArray("link");
+            String preview = null;
+            for (int j = 0; links != null && j < links.length(); j++) {
+                JSONObject a = links.getJSONObject(j).optJSONObject("attributes");
+                if (a != null && "preview".equals(a.optString("im:assetType"))) preview = a.optString("href");
+            }
+            if (preview == null) continue;
+            JSONArray imgs = e.optJSONArray("im:image");
+            JSONObject o = new JSONObject();
+            o.put("id", "itunes:" + e.getJSONObject("id").getJSONObject("attributes").getString("im:id"));
+            o.put("source", "itunes");
+            o.put("title", e.getJSONObject("im:name").getString("label"));
+            o.put("artist", e.optJSONObject("im:artist") == null ? "" : e.getJSONObject("im:artist").optString("label"));
+            if (imgs != null && imgs.length() > 0) {
+                o.put("artwork", imgs.getJSONObject(imgs.length() - 1).getString("label").replaceAll("/\\d+x\\d+bb\\.(png|jpg)$", "/600x600bb.jpg"));
+            }
+            o.put("duration", 30);
+            o.put("stream", preview);
+            o.put("kind", "preview");
             out.put(o);
         }
         return out;

@@ -9,6 +9,7 @@ import { audius, itunes, radio } from '../shared/sources.js';
 import { addHost } from '../shared/sonos.js';
 import { createApi } from '../shared/api.js';
 import { ssdpSearch } from './ssdp.js';
+import { streamTitle } from './icy.js';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const PUBLIC = path.join(ROOT, 'public');
@@ -106,6 +107,7 @@ const handleApi = createApi({
   findSpeakers: () => ssdpSearch(),
   loadLibrary,
   saveLibrary,
+  nowPlaying: async (uuid) => streamTitle(await radio.streamUrl(uuid)),
   async castUrl(track) {
     if (!STREAM_PATH.test(track.stream || '')) throw Object.assign(new Error('Not a castable track'), { status: 400 });
     return PUBLIC_URL + track.stream;

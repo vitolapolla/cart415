@@ -6,6 +6,7 @@
 //   onEnd()             reached the end of the queue (repeat off)
 //   onError(message)
 //   onQueue(tracks, i)  the queue was replaced outside the app (e.g. from Android Auto)
+//   onStreamTitle(t)    radio "now playing" metadata (native player only)
 
 import { api, Plugins } from './platform.js';
 
@@ -160,6 +161,7 @@ export class NativeEngine {
     }
     this.hooks.onState({ playing: s.playing || (s.playWhenReady && s.buffering) });
     this.hooks.onTime(s.position, s.duration);
+    this.hooks.onStreamTitle?.(s.streamTitle);
     if (s.ended && !this.lastEnded) this.hooks.onEnd();
     this.lastEnded = s.ended;
   }

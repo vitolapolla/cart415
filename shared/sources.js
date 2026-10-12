@@ -191,6 +191,52 @@ export const itunes = {
   },
 };
 
+// Apple's public iTunes charts: what's popular right now, by genre (30-second previews).
+export const CHARTS = [
+  { id: 'top', name: 'Top 50', genre: null, hue: 265 },
+  { id: 'pop', name: 'Pop', genre: 14, hue: 330 },
+  { id: 'country', name: 'Country', genre: 6, hue: 30 },
+  { id: 'hiphop', name: 'Hip-Hop', genre: 18, hue: 45 },
+  { id: 'rnb', name: 'R&B', genre: 15, hue: 290 },
+  { id: 'rock', name: 'Rock', genre: 21, hue: 0 },
+  { id: 'alternative', name: 'Alternative', genre: 20, hue: 180 },
+  { id: 'dance', name: 'Dance', genre: 17, hue: 200 },
+  { id: 'latin', name: 'Latin', genre: 12, hue: 15 },
+  { id: 'christian', name: 'Christian', genre: 22, hue: 210 },
+  { id: 'kids', name: 'Kids', genre: 4, hue: 50 },
+  { id: 'soundtrack', name: 'Soundtracks', genre: 16, hue: 240 },
+];
+
+function chartTrack(e) {
+  const preview = (Array.isArray(e.link) ? e.link : [e.link]).find((l) => l?.attributes?.['im:assetType'] === 'preview');
+  if (!preview) return null;
+  const id = e.id.attributes['im:id'];
+  const img = e['im:image']?.at(-1)?.label;
+  return {
+    id: `itunes:${id}`,
+    source: 'itunes',
+    title: e['im:name'].label,
+    artist: e['im:artist']?.label || '',
+    artistId: null,
+    album: e['im:collection']?.['im:name']?.label || null,
+    artwork: img ? img.replace(/\/\d+x\d+bb\.(png|jpg)$/, '/600x600bb.jpg') : null,
+    duration: 30,
+    genre: e.category?.attributes?.label || null,
+    stream: direct ? preview.attributes.href : `/stream/itunes/${id}.m4a`,
+    externalUrl: e.id.label,
+    kind: 'preview',
+  };
+}
+
+itunes.chart = async function chart(id, { limit = 50, country = 'us' } = {}) {
+  const c = CHARTS.find((x) => x.id === id);
+  if (!c) throw new Error('Unknown chart');
+  const url = `https://itunes.apple.com/${country}/rss/topsongs/limit=${limit}${c.genre ? `/genre=${c.genre}` : ''}/json`;
+  const { feed } = await getJSON(url, { ttl: 30 * 60_000 });
+  const entries = Array.isArray(feed.entry) ? feed.entry : feed.entry ? [feed.entry] : [];
+  return { ...c, tracks: entries.map(chartTrack).filter(Boolean) };
+};
+
 // ---------------------------------------------------------------- Radio
 // ~50k live internet radio stations from radio-browser.info.
 
@@ -203,7 +249,10 @@ function station(s) {
     id: `radio:${s.stationuuid}`,
     source: 'radio',
     title: s.name.trim(),
-    artist: [s.country, s.tags?.split(',').slice(0, 2).join(', ')].filter(Boolean).join(' · ') || 'Live radio',
+    artist: [
+      ...(s.tags || '').split(',').map((x) => x.trim()).filter(Boolean).slice(0, 2).map((x) => x.replace(/\b\w/g, (c) => c.toUpperCase())),
+      s.countrycode || s.country,
+    ].filter(Boolean).join(' · ') || 'Live radio',
     artistId: null,
     album: null,
     artwork: s.favicon || null,
@@ -231,6 +280,12 @@ export const radio = {
     const data = await getJSON(`${RADIO}/stations/bytag/${encodeURIComponent(tag)}?${qs}`, { ttl: 30 * 60_000 });
     return data.filter(isPlayableStation).slice(0, 40).map(station);
   },
+  // Popular stations for a format (e.g. "top 40", "country") in a country.
+  async onAir(tag, country = 'US') {
+    const qs = new URLSearchParams({ tag, countrycode: country, limit: '60', order: 'clickcount', reverse: 'true', hidebroken: 'true' });
+    const data = await getJSON(`${RADIO}/stations/search?${qs}`, { ttl: 30 * 60_000 });
+    return data.filter(isPlayableStation).slice(0, 24).map(station);
+  },
   async streamUrl(uuid) {
     const [s] = await getJSON(`${RADIO}/stations/byuuid/${encodeURIComponent(uuid)}`, { ttl: 60 * 60_000 });
     if (!s) throw new Error('Station not found');
@@ -239,6 +294,121 @@ export const radio = {
     return s.url_resolved;
   },
 };
+
+// What's on the air: formats shown on the Home and Radio pages.
+export const ON_AIR = [
+  { id: 'hits', name: 'Top 40 & hits', tag: 'top 40' },
+  { id: 'country', name: 'Country', tag: 'country' },
+  { id: 'hiphop', name: 'Hip-hop & R&B', tag: 'hip-hop' },
+  { id: 'classic', name: 'Classic hits', tag: 'classic hits' },
+  { id: 'christian', name: 'Christian', tag: 'christian' },
+  { id: 'kids', name: 'Kids', tag: 'kids' },
+  { id: 'chill', name: 'Chill & lo-fi', tag: 'chillout' },
+  { id: 'news', name: 'News & talk', tag: 'news' },
+];
+
+// ---------------------------------------------------------------- YouTube
+// Official channels' public feeds (no key needed) and, if you add a free
+// YouTube Data API key in Settings, YouTube search. Videos play in YouTube's
+// own embedded player, as YouTube's terms require.
+
+export const KIDS_CHANNELS = [
+  { id: 'UCG2CL6EUjG8TVT1Tpl9nJdg', name: 'Ms Rachel', blurb: 'Songs & learning for toddlers', hue: 330 },
+  { id: 'UCLsooMJoIpl_7ux2jvdPB-Q', name: 'Super Simple Songs', blurb: 'Classic kids songs', hue: 200 },
+  { id: 'UCbCmjCuTUZos6Inko4u57UQ', name: 'Cocomelon', blurb: 'Nursery rhymes', hue: 95 },
+  { id: 'UCcdwLMPsaU2ezNSJU1nFoBQ', name: 'Pinkfong', blurb: 'Baby Shark & friends', hue: 50 },
+  { id: 'UCKAqou7V9FAWXpZd9xtOg3Q', name: 'Little Baby Bum', blurb: 'Nursery rhymes', hue: 170 },
+  { id: 'UCVzLLZkDuFGAE2BGdBuBNBg', name: 'Bluey', blurb: 'Official Bluey channel', hue: 215 },
+  { id: 'UCoookXUzPciGrEZEXmh4Jjg', name: 'Sesame Street', blurb: 'Elmo, Cookie Monster & co.', hue: 15 },
+  { id: 'UC5PYHgAzJ1wLEidB58SK6Xw', name: 'Blippi', blurb: 'Explore & learn', hue: 25 },
+];
+
+const unescapeXml = (s) => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
+
+function video({ id, title, channel, channelId, thumb, published }) {
+  return {
+    id: `youtube:${id}`,
+    source: 'youtube',
+    videoId: id,
+    title,
+    artist: channel,
+    artistId: null,
+    channelId,
+    album: null,
+    artwork: thumb || `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
+    duration: 0,
+    published,
+    stream: null,
+    externalUrl: `https://www.youtube.com/watch?v=${id}`,
+    kind: 'video',
+  };
+}
+
+async function getText(url, ttl) {
+  const hit = cache.get(url);
+  if (hit && hit.expires > Date.now()) return hit.value;
+  const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+  if (!res.ok) throw new Error(`${res.status} from ${new URL(url).host}`);
+  const value = await res.text();
+  cache.set(url, { value, expires: Date.now() + ttl });
+  return value;
+}
+
+export const youtube = {
+  // The channel's latest uploads, minus Shorts.
+  async channel(channelId) {
+    const xml = await getText(`https://www.youtube.com/feeds/videos.xml?channel_id=${encodeURIComponent(channelId)}`, 60 * 60_000);
+    const name = unescapeXml((xml.match(/<title>([^<]*)<\/title>/) || [])[1] || '');
+    const videos = [];
+    for (const [, entry] of xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g)) {
+      const link = (entry.match(/<link rel="alternate" href="([^"]+)"/) || [])[1] || '';
+      if (link.includes('/shorts/')) continue;
+      videos.push(video({
+        id: (entry.match(/<yt:videoId>([^<]+)</) || [])[1],
+        title: unescapeXml((entry.match(/<title>([^<]*)<\/title>/) || [])[1] || ''),
+        channel: name,
+        channelId,
+        thumb: (entry.match(/<media:thumbnail url="([^"]+)"/) || [])[1],
+        published: (entry.match(/<published>([^<]+)</) || [])[1],
+      }));
+    }
+    return { id: channelId, name, videos: videos.filter((v) => v.videoId) };
+  },
+  async search(q, key, { kids = false } = {}) {
+    const u = new URL('https://www.googleapis.com/youtube/v3/search');
+    u.search = new URLSearchParams({
+      part: 'snippet', type: 'video', maxResults: '25', q, key, videoEmbeddable: 'true',
+      safeSearch: kids ? 'strict' : 'moderate', ...(kids ? {} : { videoCategoryId: '10' }),
+    });
+    const { items = [] } = await getJSON(u.toString(), { ttl: 10 * 60_000 });
+    return items.map((it) => video({
+      id: it.id.videoId,
+      title: unescapeXml(it.snippet.title),
+      channel: unescapeXml(it.snippet.channelTitle),
+      channelId: it.snippet.channelId,
+      thumb: it.snippet.thumbnails?.high?.url,
+      published: it.snippet.publishedAt,
+    }));
+  },
+};
+
+// Radio "now playing" titles: tidy them up, and hide ads, jingles and station IDs.
+export function cleanStreamTitle(raw, stationName = '') {
+  if (!raw) return null;
+  let s = String(raw).trim();
+  // iHeart-style: Artist - text="Song" song_spot="M" ...
+  const iheart = s.match(/^(.*?)\s*-\s*text="([^"]*)"(.*)$/);
+  if (iheart) {
+    const spot = (iheart[3].match(/song_spot="(\w*)"/) || [])[1];
+    if (spot && spot !== 'M' && spot !== 'F') return null;
+    s = iheart[1].trim() ? `${iheart[1].trim()} - ${iheart[2].trim()}` : '';
+  }
+  s = s.replace(/\s+/g, ' ').replace(/^[-–\s]+|[-–\s]+$/g, '');
+  if (!s || s.length < 3 || !/[a-z]/i.test(s)) return null;
+  if (stationName && s.toLowerCase() === stationName.toLowerCase()) return null;
+  if (/^(advert|commercial|spot|jingle|station id|imaging|unknown|live|on air|\d+$)/i.test(s)) return null;
+  return s;
+}
 
 // ---------------------------------------------------------------- Lyrics
 // Synced (LRC) and plain lyrics from lrclib.net.

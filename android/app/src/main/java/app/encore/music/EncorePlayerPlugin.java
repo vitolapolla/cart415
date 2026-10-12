@@ -228,6 +228,9 @@ public class EncorePlayerPlugin extends Plugin {
         s.put("mediaId", item == null ? null : item.mediaId);
         s.put("position", c.getCurrentPosition() / 1000.0);
         s.put("duration", dur == C.TIME_UNSET ? 0 : dur / 1000.0);
+        // For radio, ExoPlayer merges the stream's ICY "now playing" title into the metadata.
+        CharSequence title = c.getMediaMetadata().title;
+        s.put("streamTitle", title == null ? null : title.toString());
         return s;
     }
 
@@ -244,7 +247,7 @@ public class EncorePlayerPlugin extends Plugin {
         @Override
         public void onEvents(@NonNull Player player, @NonNull Player.Events events) {
             if (events.containsAny(Player.EVENT_IS_PLAYING_CHANGED, Player.EVENT_MEDIA_ITEM_TRANSITION,
-                    Player.EVENT_PLAYBACK_STATE_CHANGED, Player.EVENT_POSITION_DISCONTINUITY)) {
+                    Player.EVENT_PLAYBACK_STATE_CHANGED, Player.EVENT_POSITION_DISCONTINUITY, Player.EVENT_MEDIA_METADATA_CHANGED)) {
                 notifyListeners("state", state(player));
             }
         }

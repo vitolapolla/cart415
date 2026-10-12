@@ -54,3 +54,12 @@ test('library is read and written through the environment', async () => {
   assert.deepEqual(await api('GET', '/api/library'), { liked: [] });
   assert.deepEqual(await api('PUT', '/api/library', { liked: [1] }), { ok: true });
 });
+
+test('radio titles are cleaned and ads are hidden', async () => {
+  const { cleanStreamTitle } = await import('../shared/sources.js');
+  assert.equal(cleanStreamTitle('Jamie Miller - Babydoll'), 'Jamie Miller - Babydoll');
+  assert.equal(cleanStreamTitle('Taylor Swift - text="Shake It Off" song_spot="M" MediaBaseId="1"'), 'Taylor Swift - Shake It Off');
+  assert.equal(cleanStreamTitle('County Of Los Angeles - text="County Of Los Angeles" song_spot="T" length="00:00:16"'), null);
+  assert.equal(cleanStreamTitle('KIIS FM', 'KIIS FM'), null);
+  assert.equal(cleanStreamTitle('  '), null);
+});

@@ -5,9 +5,10 @@
 //   findSpeakers(): Promise<string[]>   hosts found by SSDP on this platform
 //   loadLibrary(), saveLibrary(lib)     persistence
 //   castUrl(track): Promise<string>     URL a Sonos speaker should fetch for a track
+//   nowPlaying?(stationId): Promise<string|null>   current song on a radio station
 // }
 
-import { audius, itunes, radio, lyrics, GENRES } from './sources.js';
+import { audius, itunes, radio, youtube, lyrics, cleanStreamTitle, GENRES, CHARTS, ON_AIR, KIDS_CHANNELS } from './sources.js';
 import * as sonos from './sonos.js';
 
 export class ApiError extends Error {
@@ -85,19 +86,57 @@ export function createApi(env) {
 
     switch (route) {
       case 'home': {
-        const [trending, underground, playlists, stations] = await Promise.all([
+        const country = q.get('country') || 'US';
+        const [trending, underground, playlists, stations, hits, countryRadio, top, countryChart] = await Promise.all([
           settled(audius.trending()), settled(audius.underground()), settled(audius.trendingPlaylists()), settled(radio.top()),
+          settled(radio.onAir('top 40', country)), settled(radio.onAir('country', country)),
+          settled(itunes.chart('top', { limit: 20 })), settled(itunes.chart('country', { limit: 20 })),
         ]);
-        return { trending, underground, playlists, radio: stations, genres: GENRES };
+        return {
+          trending, underground, playlists, radio: stations, genres: GENRES, charts: CHARTS,
+          onAir: { hits, country: countryRadio },
+          top: top.tracks || [], countryChart: countryChart.tracks || [],
+        };
+      }
+      case 'charts': return CHARTS;
+      case 'chart': return itunes.chart(arg, { limit: 50 });
+      case 'onair': {
+        if (!arg) return ON_AIR;
+        const f = ON_AIR.find((x) => x.id === arg);
+        if (!f) throw new ApiError(404, 'Unknown format');
+        return { ...f, stations: await radio.onAir(f.tag, q.get('country') || 'US') };
+      }
+      case 'kids': {
+        const [songs, msRachel, kidsRadio, childrenRadio, lullabies] = await Promise.all([
+          settled(itunes.chart('kids', { limit: 40 }).then((c) => c.tracks)),
+          settled(itunes.search('Ms Rachel songs for littles')),
+          settled(radio.onAir('kids', q.get('country') || 'US')), settled(radio.byTag('children')), settled(radio.byTag('lullaby')),
+        ]);
+        const seen = new Set();
+        const stations = [...kidsRadio, ...childrenRadio].filter((s) => !seen.has(s.id) && seen.add(s.id)).slice(0, 20);
+        return { channels: KIDS_CHANNELS, songs, msRachel: msRachel.filter((t) => /rachel/i.test(t.artist)), radio: stations, lullabies };
+      }
+      case 'youtube': {
+        if (arg === 'channel') return youtube.channel(decodeURIComponent(parts[2] || ''));
+        if (arg === 'search') {
+          if (!q.get('key')) throw new ApiError(400, 'Add a YouTube API key in Settings to search YouTube');
+          return youtube.search(q.get('q') || '', q.get('key'), { kids: q.get('kids') === '1' });
+        }
+        throw new ApiError(404, 'Not found');
+      }
+      case 'nowplaying': {
+        const title = env.nowPlaying ? await env.nowPlaying(stripId(q.get('id'))).catch(() => null) : null;
+        return { title: cleanStreamTitle(title) };
       }
       case 'search': {
         const term = (q.get('q') || '').trim();
-        if (!term) return { tracks: [], previews: [], playlists: [], artists: [], radio: [] };
-        const [tracks, previews, playlists, artists, stations] = await Promise.all([
+        if (!term) return { tracks: [], previews: [], playlists: [], artists: [], radio: [], videos: [] };
+        const key = q.get('yt');
+        const [tracks, previews, playlists, artists, stations, videos] = await Promise.all([
           settled(audius.searchTracks(term)), settled(itunes.search(term)), settled(audius.searchPlaylists(term)),
-          settled(audius.searchArtists(term)), settled(radio.search(term)),
+          settled(audius.searchArtists(term)), settled(radio.search(term)), key ? settled(youtube.search(term, key)) : [],
         ]);
-        return { tracks, previews, playlists, artists, radio: stations };
+        return { tracks, previews, playlists, artists, radio: stations, videos };
       }
       case 'genre': {
         const name = decodeURIComponent(arg || '');
