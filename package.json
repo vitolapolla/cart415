@@ -7,8 +7,22 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "build:web": "node scripts/build-web.mjs",
+    "android:sync": "node scripts/build-web.mjs && npx cap sync android",
+    "android:build": "npm run android:sync && cd android && ./gradlew assembleDebug",
+    "web": "node scripts/build-web.mjs && npx --yes serve www"
   },
-  "engines": { "node": ">=20" },
-  "license": "MIT"
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/core": "^8.5.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.3"
+  }
 }

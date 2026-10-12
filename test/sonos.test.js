@@ -1,7 +1,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import * as sonos from '../server/sonos.js';
+import * as sonos from '../shared/sonos.js';
 import { createServer } from '../server/index.js';
 
 // A fake Sonos speaker that answers the SOAP calls Encore makes.

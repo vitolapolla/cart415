@@ -1,0 +1,16 @@
+{
+  "appId": "app.encore.music",
+  "appName": "Encore",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": true
+  },
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true
+  },
+  "plugins": {
+    "CapacitorHttp": { "enabled": true },
+    "SystemBars": { "insetsHandling": "css", "style": "DARK" }
+  }
+}

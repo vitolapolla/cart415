@@ -5,11 +5,14 @@ import { createReadStream } from 'node:fs';
 import { Readable } from 'node:stream';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { audius, itunes, radio, lyrics, GENRES } from './sources.js';
-import * as sonos from './sonos.js';
+import { audius, itunes, radio } from '../shared/sources.js';
+import { addHost } from '../shared/sonos.js';
+import { createApi } from '../shared/api.js';
+import { ssdpSearch } from './ssdp.js';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const PUBLIC = path.join(ROOT, 'public');
+const SHARED = path.join(ROOT, 'shared');
 const DATA = path.join(ROOT, 'data');
 const LIBRARY = path.join(DATA, 'library.json');
 const PORT = Number(process.env.PORT) || 4415;
@@ -49,8 +52,6 @@ async function readBody(req, limit = 5 * 1024 * 1024) {
   return text ? JSON.parse(text) : {};
 }
 
-const settled = async (p) => { try { return await p; } catch (e) { console.warn(e.message); return []; } };
-const stripId = (id) => decodeURIComponent(id).replace(/^\w+:/, '');
 
 // ---------------------------------------------------------------- audio proxy
 
@@ -92,120 +93,36 @@ async function saveLibrary(lib) {
   await writeFile(LIBRARY, JSON.stringify(lib));
 }
 
-// ---------------------------------------------------------------- sonos
-
-const STREAM_PATH = /^\/stream\/(audius|itunes|radio)\/[\w-]+\.(mp3|m4a|aac)$/;
-
-async function sonosRoute(req, res, parts) {
-  const [first, action] = parts;
-  if (first === 'groups' && req.method === 'GET') {
-    const refresh = new URL(req.url, 'http://x').searchParams.get('refresh');
-    const groups = refresh || !sonos.cachedGroups().length ? await sonos.discover() : sonos.cachedGroups();
-    return send(res, 200, { groups, publicUrl: PUBLIC_URL });
-  }
-  if (first === 'hosts' && req.method === 'POST') {
-    const { host } = await readBody(req);
-    if (!/^[\w.-]+(:\d+)?$/.test(host || '')) return send(res, 400, { error: 'Invalid host' });
-    sonos.addHost(host);
-    return send(res, 200, { groups: await sonos.discover() });
-  }
-  if (first === 'join' && req.method === 'POST') {
-    const { member, coordinator } = await readBody(req);
-    const host = sonos.memberHost(member);
-    if (!host) return send(res, 404, { error: 'Unknown speaker' });
-    await sonos.joinGroup(host, coordinator);
-    return send(res, 200, { groups: await sonos.discover() });
-  }
-  if (first === 'leave' && req.method === 'POST') {
-    const { member } = await readBody(req);
-    const host = sonos.memberHost(member);
-    if (!host) return send(res, 404, { error: 'Unknown speaker' });
-    await sonos.leaveGroup(host);
-    return send(res, 200, { groups: await sonos.discover() });
-  }
-
-  const host = sonos.hostFor(decodeURIComponent(first || ''));
-  if (!host) return send(res, 404, { error: 'Unknown Sonos group. Refresh the speaker list.' });
-
-  if (action === 'status' && req.method === 'GET') return send(res, 200, await sonos.status(host));
-  if (req.method !== 'POST') return send(res, 405, { error: 'Method not allowed' });
-  const body = await readBody(req);
-  switch (action) {
-    case 'play': {
-      const t = body.track || {};
-      if (!STREAM_PATH.test(t.stream || '')) return send(res, 400, { error: 'Not a castable track' });
-      const ext = path.extname(t.stream);
-      await sonos.playUri(host, {
-        uri: PUBLIC_URL + t.stream,
-        title: t.title, artist: t.artist, album: t.album, artwork: t.artwork,
-        duration: t.duration, mime: MIME[ext], live: t.kind === 'live',
-      });
-      if (body.position > 1 && t.kind !== 'live') await sonos.seek(host, body.position).catch(() => {});
-      break;
-    }
-    case 'resume': await sonos.play(host); break;
-    case 'pause': await sonos.pause(host); break;
-    case 'stop': await sonos.stop(host); break;
-    case 'seek': await sonos.seek(host, Number(body.position) || 0); break;
-    case 'volume': await sonos.setGroupVolume(host, Number(body.volume)); break;
-    default: return send(res, 404, { error: 'Unknown action' });
-  }
-  return send(res, 200, { ok: true });
-}
-
 // ---------------------------------------------------------------- api
 
-async function api(req, res, url) {
-  const parts = url.pathname.split('/').filter(Boolean).slice(1); // drop "api"
-  const q = url.searchParams;
-  const [route, arg] = parts;
+for (const h of (process.env.SONOS_HOSTS || '').split(',').map((x) => x.trim()).filter(Boolean)) addHost(h);
 
-  switch (route) {
-    case 'home': {
-      const [trending, underground, playlists, stations] = await Promise.all([
-        settled(audius.trending()), settled(audius.underground()), settled(audius.trendingPlaylists()), settled(radio.top()),
-      ]);
-      return send(res, 200, { trending, underground, playlists, radio: stations, genres: GENRES });
-    }
-    case 'search': {
-      const term = (q.get('q') || '').trim();
-      if (!term) return send(res, 200, { tracks: [], previews: [], playlists: [], artists: [], radio: [] });
-      const [tracks, previews, playlists, artists, stations] = await Promise.all([
-        settled(audius.searchTracks(term)), settled(itunes.search(term)), settled(audius.searchPlaylists(term)),
-        settled(audius.searchArtists(term)), settled(radio.search(term)),
-      ]);
-      return send(res, 200, { tracks, previews, playlists, artists, radio: stations });
-    }
-    case 'genre': {
-      const name = decodeURIComponent(arg || '');
-      const [week, month] = await Promise.all([
-        settled(audius.trending({ genre: name, time: 'week' })), settled(audius.trending({ genre: name, time: 'month' })),
-      ]);
-      const seen = new Set();
-      const tracks = [...week, ...month].filter((t) => !seen.has(t.id) && seen.add(t.id));
-      return send(res, 200, { name, tracks, radio: await settled(radio.byTag(name.split('/')[0].toLowerCase())) });
-    }
-    case 'playlist': return send(res, 200, await audius.playlist(stripId(arg)));
-    case 'artist': return send(res, 200, await audius.artist(stripId(arg)));
-    case 'track': return send(res, 200, await audius.track(stripId(arg)));
-    case 'radio': return send(res, 200, q.get('tag') ? await radio.byTag(q.get('tag')) : await radio.top());
-    case 'lyrics':
-      return send(res, 200, (await lyrics({ title: q.get('title'), artist: q.get('artist'), duration: Number(q.get('duration')) })) || {});
-    case 'library':
-      if (req.method === 'GET') return send(res, 200, (await loadLibrary()) || {});
-      if (req.method === 'PUT') { await saveLibrary(await readBody(req)); return send(res, 200, { ok: true }); }
-      return send(res, 405, { error: 'Method not allowed' });
-    case 'sonos': return sonosRoute(req, res, parts.slice(1));
-    case 'info': return send(res, 200, { publicUrl: PUBLIC_URL });
-  }
-  return send(res, 404, { error: 'Not found' });
+// Only tracks relayed by this server may be cast, so the API can't be used to
+// make speakers fetch arbitrary URLs.
+const STREAM_PATH = /^\/stream\/(audius|itunes|radio)\/[\w-]+\.(mp3|m4a|aac)$/;
+
+const handleApi = createApi({
+  publicUrl: PUBLIC_URL,
+  findSpeakers: () => ssdpSearch(),
+  loadLibrary,
+  saveLibrary,
+  async castUrl(track) {
+    if (!STREAM_PATH.test(track.stream || '')) throw Object.assign(new Error('Not a castable track'), { status: 400 });
+    return PUBLIC_URL + track.stream;
+  },
+});
+
+async function api(req, res, url) {
+  const body = ['POST', 'PUT'].includes(req.method) ? await readBody(req) : {};
+  send(res, 200, await handleApi(req.method, url.pathname + url.search, body));
 }
 
 // ---------------------------------------------------------------- static
 
 async function serveStatic(req, res, pathname) {
-  let file = path.normalize(path.join(PUBLIC, decodeURIComponent(pathname)));
-  if (!file.startsWith(PUBLIC)) return send(res, 403, 'Forbidden');
+  const dir = pathname.startsWith('/shared/') ? ROOT : PUBLIC;
+  let file = path.normalize(path.join(dir, decodeURIComponent(pathname)));
+  if (!file.startsWith(dir === ROOT ? SHARED : PUBLIC)) return send(res, 403, 'Forbidden');
   try {
     if ((await stat(file)).isDirectory()) file = path.join(file, 'index.html');
     await stat(file);

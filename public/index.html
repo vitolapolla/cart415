@@ -5,14 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0b0b10">
   <title>Encore</title>
-  <link rel="icon" href="/icon.svg" type="image/svg+xml">
-  <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="stylesheet" href="/styles.css">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.webmanifest">
+  <!-- encore:config -->
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <div class="app" id="app">
     <aside class="sidebar">
-      <a class="brand" href="#/home"><img src="/icon.svg" alt=""><span>Encore</span></a>
+      <a class="brand" href="#/home"><img src="icon.svg" alt=""><span>Encore</span></a>
       <nav class="nav">
         <a href="#/home" data-nav="home"><svg data-icon="home"></svg>Home</a>
         <a href="#/search" data-nav="search"><svg data-icon="search"></svg>Search</a>
@@ -43,6 +44,7 @@
     </aside>
 
     <footer class="player" id="player">
+      <div class="mini-progress"><i id="mini-progress"></i></div>
       <div class="player-track">
         <img class="player-art" id="p-art" alt="">
         <div class="player-meta">
@@ -86,8 +88,45 @@
     </nav>
   </div>
 
+  <section class="sheet" id="sheet" aria-hidden="true" aria-label="Now playing">
+    <div class="sheet-scroll">
+      <header class="sheet-head">
+        <button class="icon-btn" data-action="close-sheet" title="Close"><svg data-icon="chevron-down"></svg></button>
+        <div class="sheet-context"><small>Playing from</small><b id="s-context"></b></div>
+        <button class="icon-btn" data-action="more-current" title="More options"><svg data-icon="more"></svg></button>
+      </header>
+      <div class="sheet-art-wrap"><img id="s-art" alt=""></div>
+      <div class="sheet-meta">
+        <div class="sheet-text"><div id="s-title"></div><div id="s-artist"></div></div>
+        <button class="icon-btn big" data-action="like-current" title="Like"><svg data-icon="heart"></svg></button>
+      </div>
+      <div class="sheet-progress">
+        <input type="range" id="s-seek" min="0" max="1000" value="0" aria-label="Seek">
+        <div class="sheet-times"><span id="s-time">0:00</span><span id="s-dur">0:00</span></div>
+      </div>
+      <div class="sheet-controls">
+        <button class="icon-btn" data-action="shuffle" title="Shuffle"><svg data-icon="shuffle"></svg></button>
+        <button class="icon-btn big" data-action="prev" title="Previous"><svg data-icon="prev"></svg></button>
+        <button class="play-btn huge" data-action="toggle" title="Play"><svg data-icon="play"></svg></button>
+        <button class="icon-btn big" data-action="next" title="Next"><svg data-icon="next"></svg></button>
+        <button class="icon-btn" data-action="repeat" title="Repeat"><svg data-icon="repeat"></svg></button>
+      </div>
+      <div class="sheet-foot">
+        <button class="device-chip" id="s-cast" data-action="cast"></button>
+        <button class="icon-btn" data-action="sleep" title="Sleep timer"><svg data-icon="moon"></svg></button>
+      </div>
+      <div class="sheet-tabs">
+        <button data-sheet-tab="queue" class="active">Up next</button>
+        <button data-sheet-tab="lyrics">Lyrics</button>
+        <button data-sheet-tab="about">About</button>
+      </div>
+      <div class="sheet-extra" id="sheet-extra"></div>
+    </div>
+  </section>
+
+  <div class="backdrop" id="backdrop" hidden></div>
   <div class="popover" id="popover" hidden></div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="/app.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>

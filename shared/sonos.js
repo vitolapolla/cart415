@@ -1,7 +1,6 @@
 // Minimal Sonos controller using the speakers' local UPnP/SOAP API (port 1400).
-// No Sonos account or cloud API needed: the server must be on the same LAN.
-
-import dgram from 'node:dgram';
+// No Sonos account or cloud API needed, but the controller must be on the same LAN.
+// Platform-neutral: used by the Node server and by the Android app.
 
 const PORT = 1400;
 
@@ -62,49 +61,12 @@ export async function soap(host, service, action, args = {}) {
 }
 
 // ---------------------------------------------------------------- discovery
+// SSDP (UDP multicast) differs per platform, so callers pass in the hosts it found.
 
-const known = new Set((process.env.SONOS_HOSTS || '').split(',').map((s) => s.trim()).filter(Boolean));
+const known = new Set();
 
 export function addHost(host) {
   known.add(host);
-}
-
-export function ssdpSearch(timeout = 2500) {
-  return new Promise((resolve) => {
-    const found = new Set();
-    let sock;
-    try {
-      sock = dgram.createSocket({ type: 'udp4', reuseAddr: true });
-    } catch {
-      return resolve([]);
-    }
-    const msg = Buffer.from([
-      'M-SEARCH * HTTP/1.1',
-      'HOST: 239.255.255.250:1900',
-      'MAN: "ssdp:discover"',
-      'MX: 1',
-      'ST: urn:schemas-upnp-org:device:ZonePlayer:1',
-      '', '',
-    ].join('\r\n'));
-    sock.on('message', (buf, rinfo) => {
-      if (/Sonos/i.test(buf.toString()) || /ZonePlayer/i.test(buf.toString())) found.add(rinfo.address);
-    });
-    sock.on('error', () => finish());
-    const finish = () => {
-      try { sock.close(); } catch {}
-      resolve([...found]);
-    };
-    sock.bind(() => {
-      try {
-        sock.setBroadcast(true);
-        for (let i = 0; i < 2; i++) {
-          sock.send(msg, 1900, '239.255.255.250');
-          sock.send(msg, 1900, '255.255.255.255');
-        }
-      } catch {}
-      setTimeout(finish, timeout);
-    });
-  });
 }
 
 // Parse ZoneGroupState into groups. Only a group's coordinator accepts playback commands.
@@ -135,8 +97,8 @@ export function parseZoneGroups(stateXml) {
 
 let lastGroups = [];
 
-export async function discover() {
-  const hosts = new Set([...known, ...(await ssdpSearch())]);
+export async function discover(found = []) {
+  const hosts = new Set([...known, ...found]);
   for (const g of lastGroups) hosts.add(g.host);
   // Any one speaker knows the whole household's topology.
   for (const host of hosts) {
@@ -196,7 +158,8 @@ export function didl({ uri, title, artist, album, artwork, duration, mime, live 
 
 export async function playUri(host, { uri, ...meta }) {
   // Sonos plays endless HTTP streams properly only with its radio scheme.
-  const transportUri = meta.live ? uri.replace(/^https?:\/\//, 'x-rincon-mp3radio://') : uri;
+  // (That scheme is http-only, so https stations are passed through as they are.)
+  const transportUri = meta.live && uri.startsWith('http://') ? uri.replace('http://', 'x-rincon-mp3radio://') : uri;
   await soap(host, 'AVTransport', 'SetAVTransportURI', {
     InstanceID: 0,
     CurrentURI: transportUri,

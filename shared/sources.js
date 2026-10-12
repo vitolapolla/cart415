@@ -1,8 +1,10 @@
 // Music sources. Every source is normalised into the same Track shape:
 // { id, source, title, artist, artistId, album, artwork, duration, genre,
 //   stream, kind: 'full' | 'preview' | 'live' }
-// `stream` always points at this server (/stream/...), so the browser gets
-// same-origin audio (needed for the equalizer) and Sonos gets a LAN URL.
+// Runs both in Node (the Encore server) and in the browser / Android app.
+// In server mode `stream` points at the server's relay (/stream/...), so the
+// browser gets same-origin audio (needed for the equalizer) and Sonos gets a
+// LAN URL. In direct mode (app, static website) it is the source's own URL.
 
 const APP_NAME = 'encore';
 const AUDIUS = 'https://api.audius.co/v1';
@@ -11,6 +13,12 @@ const RADIO_MIRRORS = ['de1', 'fi1', 'de2', 'nl1'].map((m) => `https://${m}.api.
 const RADIO = '@radio';
 
 const cache = new Map();
+const IS_BROWSER = typeof window !== 'undefined';
+let direct = false;
+
+export function configure(opts) {
+  direct = !!opts.direct;
+}
 
 async function getJSON(url, opts = {}) {
   if (!url.startsWith(RADIO)) return fetchJSON(url, opts);
@@ -24,7 +32,9 @@ async function getJSON(url, opts = {}) {
 async function fetchJSON(url, { ttl = 60_000 } = {}) {
   const hit = cache.get(url);
   if (hit && hit.expires > Date.now()) return hit.value;
-  const res = await fetch(url, { headers: { 'User-Agent': `${APP_NAME}/0.1` }, signal: AbortSignal.timeout(10_000) });
+  // Browsers manage User-Agent themselves (and a custom one would force a CORS preflight).
+  const headers = IS_BROWSER ? {} : { 'User-Agent': `${APP_NAME}/0.1` };
+  const res = await fetch(url, { headers, signal: AbortSignal.timeout(10_000) });
   if (!res.ok) throw new Error(`${res.status} from ${new URL(url).host}`);
   const value = await res.json();
   cache.set(url, { value, expires: Date.now() + ttl });
@@ -59,7 +69,7 @@ function audiusTrack(t) {
     genre: t.genre || null,
     mood: t.mood || null,
     plays: t.play_count || 0,
-    stream: `/stream/audius/${t.id}.mp3`,
+    stream: direct ? audiusUrl(`/tracks/${t.id}/stream`) : `/stream/audius/${t.id}.mp3`,
     kind: 'full',
   };
 }
@@ -139,6 +149,11 @@ export const audius = {
   streamUrl(id) {
     return audiusUrl(`/tracks/${id}/stream`);
   },
+  // The final (signed) file URL, for players that don't follow redirects well.
+  async resolvedStreamUrl(id) {
+    const { data } = await fetchJSON(audiusUrl(`/tracks/${id}/stream`, { no_redirect: 'true' }), { ttl: 0 });
+    return data;
+  },
 };
 
 // ---------------------------------------------------------------- iTunes
@@ -156,7 +171,7 @@ function itunesTrack(r) {
     duration: 30,
     fullDuration: Math.round((r.trackTimeMillis || 0) / 1000),
     genre: r.primaryGenreName || null,
-    stream: `/stream/itunes/${r.trackId}.m4a`,
+    stream: direct ? r.previewUrl : `/stream/itunes/${r.trackId}.m4a`,
     externalUrl: r.trackViewUrl,
     kind: 'preview',
   };
@@ -179,7 +194,9 @@ export const itunes = {
 // ---------------------------------------------------------------- Radio
 // ~50k live internet radio stations from radio-browser.info.
 
-const isPlayableStation = (s) => s.url_resolved && !s.hls && /mp3|aac/i.test(s.codec || '');
+const isPlayableStation = (s) => s.url_resolved && !s.hls && /mp3|aac/i.test(s.codec || '') &&
+  // An https web page can't play http streams (mixed content).
+  !(direct && IS_BROWSER && location.protocol === 'https:' && s.url_resolved.startsWith('http:'));
 
 function station(s) {
   return {
@@ -194,7 +211,7 @@ function station(s) {
     genre: s.tags?.split(',')[0] || null,
     codec: s.codec,
     bitrate: s.bitrate,
-    stream: `/stream/radio/${s.stationuuid}.${/aac/i.test(s.codec) ? 'aac' : 'mp3'}`,
+    stream: direct ? s.url_resolved : `/stream/radio/${s.stationuuid}.${/aac/i.test(s.codec) ? 'aac' : 'mp3'}`,
     kind: 'live',
   };
 }
